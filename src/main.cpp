@@ -52,6 +52,8 @@ int main() {
            * TODO: Calculate steering angle and throttle using MPC.
            * Both are in between [-1, 1].
            */
+          // Transform waypoints to car's perspective
+          // So px = 0, py = 0, and psi = 0
           for (int i = 0; i < ptsx.size(); i++)
           {
             // shift car reference angle to 90 degrees

@@ -2,6 +2,62 @@
 Self-Driving Car Engineer Nanodegree Program
 
 ---
+## The Model.
+
+In this project, we used a Kinematic model. Kinematic models are simplifications of dynamic models that ignore tire forces, gravity, and mass. This simplification reduces the accuracy of the models, but it also makes them more tractable. At low and moderate speeds, kinematic models often approximate the actual vehicle dynamics. The model uses the state and actuations from the previous timestep to calculate the state for the current timestep. The model equations are as below:
+
+	x[t+1] = x[t] + v[t] * cos(psi[t]) * dt
+
+	y[t+1] = y[t] + v[t] * sin(psi[t]) * dt
+
+	psi[t+1] = psi[t] + v[t] / Lf * delta[t] * dt
+
+	v[t+1] = v[t] + a[t] * dt
+
+	cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
+
+	epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
+
+where:
+x,y is the position of the car,
+psi is the car's orientation or heading,
+v is the velocity of the vehicle,
+cte is the cross track error; the error between the center of the road and the vehicle’s position,
+epsi is the orientation error; the desired orientation subtracted from the current orientation,
+delta is the steering angle,
+a is the acceleration,
+Lf​  is the distance between the center of mass of the vehicle and it's front axle,
+psides is the desired orientation.
+
+In this model, [x,y,psi,v,cte,epsi] is the state of the vehicle,  Lf​  is a physical characteristic of the vehicle, and  [delta,a]  are the actuators, or control inputs, to our system.
+
+This is a good kinematic model!
+
+## Timestep Length and Elapsed Duration (N & dt).
+
+The prediction horizon (_T_) is the duration over which future predictions are made and  is the product of two other variables,  _N_  and  _dt_. _N_  is the number of timesteps in the horizon.  _dt_  is how much time elapses between actuations. For example, if  _N_  were 20 and  _dt_  were 0.5, then  _T_  would be 10 seconds.
+
+In the case of driving a car,  _T_  should be a few seconds, at most. Beyond that horizon, the environment will change enough that it won't make sense to predict any further into the future. N also determines the length of the control input vector which needs to be optimized by the MPC controller. This is also the major driver of computational cost. MPC attempts to approximate a continuous reference trajectory by means of discrete paths between actuations. Larger values of  _dt_  result in less frequent actuations, which makes it harder to accurately approximate a continuous reference trajectory. This is sometimes called "discretization error".
+
+A good approach to setting  _N_,  _dt_, and  _T_  is to first determine a reasonable range for  _T_  and then tune  _dt_and  _N_  appropriately, keeping the effect of each in mind.
+
+By keeping the above guidelines in mind, several values of _N_ (in the range of 5 to 25) and _dt_ (in the range of 0.1 to 0.5) were tried and settled for the final valuesof _N_ = 10 and _dt_ = 0.1
+    
+
+## Polynomial Fitting and MPC Preprocessing.
+
+In MPC, the reference trajectory is typically passed to the control block as a polynomial. This polynomial is usually 3rd order, since third order polynomials will fit trajectories for most roads. We used  `polyfit`  to fit a 3rd order polynomial to the given x and y coordinates representing waypoints and  `polyeval`  to evaluate y values of given x coordinates.
+
+We displayed both these reference path and the MPC trajectory path in the simulator by sending a list of optional x and y values to the  `mpc_x`,`mpc_y`,  `next_x`, and  `next_y`  fields in the C++ main script.
+
+These (x,y) points are displayed in reference to the vehicle's coordinate system. The x axis always points in the direction of the car’s heading and the y axis points to the left of the car and the server returns waypoints using the map's coordinate system, which is different than the car's coordinate system. So we preprocessed these waypoints by transforming them (at ./src/main.cpp from line 55 to line 71) into vehicles coordinate system to both display them and to calculate the CTE and Epsi values for the model predictive controller.
+
+## Model Predictive Control with Latency
+In a real car, an actuation command won't execute instantly - there will be a delay as the command propagates through the system. A realistic delay might be on the order of 100 milliseconds. This is a problem called "latency", and it's a difficult challenge for some controllers - like a PID controller - to overcome. But a Model Predictive Controller can adapt quite well because we can model this latency in the system.
+
+A contributing factor to latency is actuator dynamics. For example the time elapsed between when you command a steering angle to when that angle is actually achieved. This could easily be modeled by a simple dynamic system and incorporated into the vehicle model. Thus, MPC can deal with latency much more effectively, by explicitly taking it into account, than a PID controller.
+
+Here in this model the delay of 100ms is countered by considering the actuator outputs [delta, a] from the previous time step [t-1] as the delay here is equal to the time step length _dt_ (0.1 s or 100 ms) of the model.
 
 ## Dependencies
 
