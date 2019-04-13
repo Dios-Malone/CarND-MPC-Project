@@ -15,6 +15,7 @@
 using nlohmann::json;
 using std::string;
 using std::vector;
+const double Lf = 2.67;
 
 // For converting back and forth between radians and degrees.
 constexpr double pi() { return M_PI; }
@@ -47,44 +48,56 @@ int main() {
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
+          double delta = j[1]["steering_angle"];
+          double acceleration = j[1]["throttle"];
 
+
+          //Consider the latency, the calculation will start after the time lapse
+
+          double time_lapse = 0.1;
+
+          //Predict the state after the latency
+          double px_adv = px + (v * cos(psi) * time_lapse);
+          double py_adv = py + (v * sin(psi) * time_lapse);
+          double psi_adv = psi - ((v * delta * time_lapse)/Lf);
+          double v_adv = v + (acceleration * time_lapse);
           /**
            * TODO: Calculate steering angle and throttle using MPC.
            * Both are in between [-1, 1].
            */
           // Transform waypoints to car's perspective
-          // So px = 0, py = 0, and psi = 0
-          for (int i = 0; i < ptsx.size(); i++)
-          {
-            // shift car reference angle to 90 degrees
-            double shift_x = ptsx[i] - px;
-            double shift_y = ptsy[i] - py;
-            
-            ptsx[i] = (shift_x * cos(0 - psi) - shift_y * sin(0 - psi));
-            ptsy[i] = (shift_x * sin(0 - psi) + shift_y * cos(0 - psi));
+          Eigen::VectorXd ptsx_transform(ptsx.size());
+          ptsx_transform.fill(0.0);
+          Eigen::VectorXd ptsy_transform(ptsy.size());
+          ptsy_transform.fill(0.0);
+
+          for (int i = 0; i < ptsx.size(); i++) 
+		  {
+		    // shift car reference angle to 90 degrees
+            double shift_x = ptsx[i]-px_adv;
+            double shift_y = ptsy[i]-py_adv;
+            ptsx_transform[i] = shift_x * cos(-psi_adv) - shift_y * sin(-psi_adv);
+            ptsy_transform[i] = shift_x * sin(-psi_adv) + shift_y * cos(-psi_adv);
           }
-          
-          double* ptrx = &ptsx[0];
-          Eigen::Map<Eigen::VectorXd> ptsx_transform(ptrx, 6);
-          
-          double* ptry = &ptsy[0];
-          Eigen::Map<Eigen::VectorXd> ptsy_transform(ptry, 6);
-          
+
+          //Fit data using 3rd polinomial
           auto coeffs = polyfit(ptsx_transform, ptsy_transform, 3);
-          
-          // calculate cte and epsi (simplified)
+
+          //Calculate cte and epsi. cte is the horizontal line
           double cte = polyeval(coeffs, 0);
           double epsi = -atan(coeffs[1]);
-		  
+
+          //Create the state vector
           Eigen::VectorXd state(6);
-          state << 0, 0 ,0, v, cte, epsi;
-          
+          state << 0, 0, 0, v_adv, cte, epsi;
+
+          //MPC solve
           auto vars = mpc.Solve(state, coeffs);
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
-          msgJson["steering_angle"] = vars[0] / (deg2rad(25));
+          msgJson["steering_angle"] = -1.0 * vars[0]; 
           msgJson["throttle"] = vars[1];
 
           // Display the MPC predicted trajectory 
@@ -117,10 +130,10 @@ int main() {
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
 
-          for (double i = 0; i < 100; i += 3)
-          {
-            next_x_vals.push_back(i);
-            next_y_vals.push_back(polyeval(coeffs, i));
+          for (int i = 0; i < ptsx_transform.size(); i++) 
+		  {
+            next_x_vals.push_back(ptsx_transform[i]);
+            next_y_vals.push_back(ptsy_transform[i]);
           }
 
           msgJson["next_x"] = next_x_vals;
